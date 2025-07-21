@@ -1,0 +1,4 @@
+{
+    "subject": "Address Correction Fee Claim--{{跟踪号}}",
+    "body": "<html><body>\r\n<h4>Dear UPS Team,</h4>\r\n\r\n    <p>\r\n        We haven't changed the address of this package. Why is there a change of address in the bill(invoice number <strong>{{发票号}}</strong>)? Please refund the cost of changing the address to us.\r\n    </p>\r\n\r\n    <p>\r\n        tracking number:<br>\r\n        <strong>{{跟踪号}}</strong>\r\n    </p>\r\n\r\n    <p>\r\n        Please reply me as soon as possible.\r\n    </p>\r\n\r\n    <p>\r\n        Thank you!\r\n    </p>\r\n</html></body>"
+}

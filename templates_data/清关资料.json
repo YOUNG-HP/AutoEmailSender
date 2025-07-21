@@ -1,0 +1,4 @@
+{
+    "subject": "【等通知送件|Hold for Delivery Instruction】{{清关资料提单信息}}",
+    "body": "<html><body><p style='font-size:14pt;'>DEAR，</p><p style='font-size:14pt;'><strong>请查收附件清关资料，请先出7501，谢谢</strong></p><p style='font-size:12pt;'>Please find attached the customs clearance documents. Kindly process the 7501 form. Thank you.</p><p style='font-size:14pt;'><strong>等通知送件</strong></p><p style='font-size:12pt;'>Please wait for delivery instruction.</p><p style='font-size:14pt; color: red;'></br><span style='font-size:14pt;'>{{清关资料备注}}</span></p></body></html>"
+}

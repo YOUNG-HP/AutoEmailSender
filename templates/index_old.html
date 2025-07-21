@@ -1,0 +1,339 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row mt-3">
+    <div class="col-md-8">
+        <h3>发送邮件</h3>
+        <div class="card">
+            <div class="card-body">
+                <form id="send-form" action="{{ url_for('send_emails') }}" method="POST" enctype="multipart/form-data">
+                    <!-- Step 1: Select SMTP Config -->
+                    <div class="mb-3">
+                        <label for="config_select" class="form-label"><strong>第1步：选择发件人</strong></label>
+                        <select class="form-select" id="config_select" name="config_select" required>
+                            <option selected disabled value="">请选择一个发件人配置...</option>
+                            {% for config in smtp_configs %}
+                            <option value="{{ config.id }}">{{ config.name }} ({{ config.email_username }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Step 2: Select Template -->
+                    <div class="mb-3">
+                        <label for="template_select" class="form-label"><strong>第2步：选择邮件模板</strong></label>
+                        <select class="form-select" id="template_select" name="template_select" required>
+                            <option selected disabled value="">请选择一个模板...</option>
+                             {% for template in email_templates %}
+                            <option value="{{ template.id }}">{{ template.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Template Preview Area -->
+                    <div id="template-preview-area" class="mb-3" style="display: none;">
+                        <div class="card">
+                            <div class="card-header">
+                                <strong>邮件预览</strong>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>主题:</strong> <span id="preview-subject"></span></p>
+                                <hr>
+                                <div id="preview-body"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Upload Data -->
+                    <div class="mb-3">
+                        <label for="data_file" class="form-label"><strong>第3步：上传数据文件 (Excel 或 CSV)</strong></label>
+                        <input class="form-control" type="file" id="data_file" name="data_file" accept=".xlsx, .xls, .csv" required>
+                    </div>
+
+                    <!-- Step 4: Pre-flight Check & Column Mapping -->
+                    <div id="preflight-check-area" class="mb-3" style="display: none;">
+                        <div class="card border-warning">
+                            <div class="card-header">
+                                <strong>第4步：预发送检查 & 字段映射</strong>
+                            </div>
+                            <div class="card-body">
+                                <!-- Data Preview -->
+                                <div id="data-preview-section">
+                                    <h5>数据文件预览</h5>
+                                    <div class="table-responsive">
+                                        <table class="table table-bordered table-sm">
+                                            <thead id="preview-header"></thead>
+                                            <tbody id="preview-body-row"></tbody>
+                                        </table>
+                                    </div>
+                                    <p id="send-summary" class="text-primary fw-bold"></p>
+                                </div>
+                                <hr>
+                                <!-- Column Mapping -->
+                                <div id="mapping-section">
+                                    <h5 id="mapping-summary">字段映射</h5>
+                                    <div id="column_mapping_area"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 5: Individual Attachments -->
+                    <div class="mb-3">
+                        <label class="form-label"><strong>第5步：独立附件字段 (可选)</strong></label>
+                        <div id="individual_attachment_area"><p class="text-muted">此处的下拉菜单将由数据文件动态生成。</p></div>
+                        <div class="form-text">
+                            如果您的数据文件中有一列指定了每封邮件的独立附件路径 (相对于 <code>attachments_repository</code> 目录)，请在此选择该列。
+                            <br><b>提示:</b> 如需为单封邮件附加多个文件，请在单元格中用分号 (<code>;</code>) 分隔各个附件的相对路径。
+                        </div>
+                    </div>
+
+                    <!-- Step 6: Common Attachments -->
+                    <div class="mb-3">
+                        <label for="attachments" class="form-label"><strong>第6步：通用附件 (可选)</strong></label>
+                        <input class="form-control" type="file" id="attachments" name="attachments" multiple>
+                        <div class="form-text">此处上传的附件将被添加到每一封发送的邮件中。</div>
+                    </div>
+
+                    <hr>
+
+                    <button id="send-button" type="submit" class="btn btn-primary">开始发送邮件</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Section for uploading to repository -->
+<div class="row mt-4">
+    <div class="col-md-8">
+        <h3>附件仓库</h3>
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">第7步：上传文件到附件仓库 (可选)</h5>
+                <p class="card-text">如果您的独立附件还未上传，可以在此选择文件或整个文件夹进行上传。系统会自动保持目录结构。</p>
+                <div class="mb-3">
+                    <label for="repository_files" class="form-label">选择文件或文件夹</label>
+                    <input class="form-control" type="file" id="repository_files" webkitdirectory directory multiple>
+                </div>
+                <button id="upload-repo-button" class="btn btn-success">上传至仓库</button>
+                <div id="upload-status" class="mt-2"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const templateSelect = document.getElementById('template_select');
+        const dataFileInput = document.getElementById('data_file');
+        const mappingArea = document.getElementById('column_mapping_area');
+        const individualAttachmentArea = document.getElementById('individual_attachment_area');
+        const previewArea = document.getElementById('template-preview-area');
+        const previewSubject = document.getElementById('preview-subject');
+        const previewBody = document.getElementById('preview-body');
+        const preflightCheckArea = document.getElementById('preflight-check-area');
+
+        function fetchAndDisplayPreview() {
+            const templateId = templateSelect.value;
+            if (!templateId) {
+                previewArea.style.display = 'none';
+                return;
+            }
+
+            fetch(`/preview_template/${templateId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        previewSubject.innerHTML = `<span class="text-danger">${data.error}</span>`;
+                        previewBody.innerHTML = '';
+                    } else {
+                        previewSubject.innerHTML = data.subject;
+                        previewBody.innerHTML = data.body;
+                    }
+                    previewArea.style.display = 'block';
+                })
+                .catch(error => {
+                    previewSubject.innerHTML = `<span class="text-danger">Error loading preview.</span>`;
+                    previewBody.innerHTML = '';
+                    previewArea.style.display = 'block';
+                });
+        }
+
+        function updateMappingUI() {
+            const templateId = templateSelect.value;
+            const dataFile = dataFileInput.files[0];
+
+            if (!templateId || !dataFile) {
+                preflightCheckArea.style.display = 'none';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('template_id', templateId);
+            formData.append('data_file', dataFile);
+
+            // Show loading state
+            preflightCheckArea.style.display = 'block';
+            document.getElementById('mapping-summary').textContent = '字段映射';
+            mappingArea.innerHTML = '<p class="text-muted">正在解析文件并进行智能匹配...</p>';
+            document.getElementById('data-preview-section').style.display = 'none';
+
+            fetch("{{ url_for('get_columns_and_placeholders') }}", {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    mappingArea.innerHTML = `<p class="text-danger">Error: ${data.error}</p>`;
+                    return;
+                }
+
+                // --- 1. Update Data Preview ---
+                const previewHeader = document.getElementById('preview-header');
+                const previewBodyRow = document.getElementById('preview-body-row');
+                previewHeader.innerHTML = '';
+                previewBodyRow.innerHTML = '';
+                let headerHtml = '<tr>';
+                let bodyRowHtml = '<tr>';
+                data.columns.forEach(col => {
+                    headerHtml += `<th>${col}</th>`;
+                    bodyRowHtml += `<td>${data.first_row[col] || ''}</td>`;
+                });
+                headerHtml += '</tr>';
+                bodyRowHtml += '</tr>';
+                previewHeader.innerHTML = headerHtml;
+                previewBodyRow.innerHTML = bodyRowHtml;
+                document.getElementById('send-summary').textContent = `文件总行数：${data.total_rows}。本次将发送 ${data.total_rows} 封邮件。`;
+                document.getElementById('data-preview-section').style.display = 'block';
+
+                // --- 2. Build Mapping UI ---
+                let html = '<div class="row">';
+                let unmatched_count = 0;
+
+                // --- Special Fields (To, CC, BCC) ---
+                html += '<p><strong>邮件关键字段（收件人等）:</strong></p>';
+                const special_fields = [
+                    {name: 'recipient_to', label: '收件人', required: true},
+                    {name: 'recipient_cc', label: '抄送人', required: false},
+                    {name: 'recipient_bcc', label: '密送人', required: false}
+                ];
+
+                special_fields.forEach(field => {
+                    const suggested_col = data.suggested_mappings[field.name];
+                    const row_class = !suggested_col && field.required ? 'bg-warning-subtle' : '';
+                    html += `<div class="col-md-6 mb-2 rounded p-2 ${row_class}">`;
+                    html += `<div class="input-group">
+                                <span class="input-group-text">${field.label}</span>
+                                <select class="form-select" name="map_${field.name}" ${field.required ? 'required' : ''}>`;
+                    html += '<option value="" selected disabled>选择对应的数据列...</option>';
+                    data.columns.forEach(column => {
+                        const selected = (column === suggested_col) ? 'selected' : '';
+                        html += `<option value="${column}" ${selected}>${column}</option>`;
+                    });
+                    html += '</select></div></div>';
+                    if (!suggested_col && field.required) unmatched_count++;
+                });
+
+                // --- Content Placeholders ---
+                if (data.placeholders.length > 0) {
+                    html += '<hr><p><strong>邮件内容字段 (主题和正文):</strong></p>';
+                    data.placeholders.forEach(placeholder => {
+                        const suggested_col = data.suggested_mappings[placeholder];
+                        const row_class = !suggested_col ? 'bg-warning-subtle' : '';
+                        html += `<div class="col-md-6 mb-2 rounded p-2 ${row_class}">`;
+                        html += `<div class="input-group">
+                                    <span class="input-group-text">${placeholder}</span>
+                                    <select class="form-select" name="map_${placeholder}" required>
+                                        <option value="" selected disabled>选择对应的数据列...</option>`;
+                        data.columns.forEach(column => {
+                            const selected = (column === suggested_col) ? 'selected' : '';
+                            html += `<option value="${column}" ${selected}>${column}</option>`;
+                        });
+                        html += '</select></div></div>';
+                        if (!suggested_col) unmatched_count++;
+                    });
+                }
+                html += '</div>';
+                mappingArea.innerHTML = html;
+
+                // --- 3. Update Individual Attachment Field ---
+                let attachment_html = '<div class="input-group">';
+                attachment_html += '<span class="input-group-text">附件路径列</span>';
+                attachment_html += '<select class="form-select" name="map_individual_attachment">';
+                attachment_html += '<option value="" selected>不使用独立附件</option>';
+                data.columns.forEach(column => {
+                    attachment_html += `<option value="${column}">${column}</option>`;
+                });
+                attachment_html += '</select></div>';
+                individualAttachmentArea.innerHTML = attachment_html;
+
+                // --- 4. Update Summary Message ---
+                const matched_count = Object.keys(data.suggested_mappings).length;
+                let summary_text = `系统已为您自动匹配 ${matched_count} 个字段。`;
+                if (unmatched_count > 0) {
+                    summary_text += ` <span class="text-danger fw-bold">请检查并手动选择 ${unmatched_count} 个未匹配的必填字段。</span>`;
+                } else {
+                    summary_text += ` 所有字段均已匹配。`;
+                }
+                document.getElementById('mapping-summary').innerHTML = summary_text;
+
+            })
+            .catch(error => {
+                mappingArea.innerHTML = `<p class="text-danger">An unexpected error occurred: ${error}</p>`;
+            });
+        }
+
+        templateSelect.addEventListener('change', updateMappingUI);
+        dataFileInput.addEventListener('change', updateMappingUI);
+            templateSelect.addEventListener('change', fetchAndDisplayPreview);
+
+        const sendForm = document.getElementById('send-form');
+        const sendButton = document.getElementById('send-button');
+
+        sendForm.addEventListener('submit', function() {
+            sendButton.disabled = true;
+            sendButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 正在发送中，请稍候...';
+        });
+
+        // --- Repository Upload Logic ---
+        const repoFileInput = document.getElementById('repository_files');
+        const uploadRepoButton = document.getElementById('upload-repo-button');
+        const uploadStatus = document.getElementById('upload-status');
+
+        uploadRepoButton.addEventListener('click', function() {
+            const files = repoFileInput.files;
+            if (files.length === 0) {
+                uploadStatus.innerHTML = '<div class="alert alert-warning">请先选择要上传的文件或文件夹。</div>';
+                return;
+            }
+
+            const formData = new FormData();
+            for (const file of files) {
+                formData.append('repository_files', file, file.webkitRelativePath || file.name);
+            }
+
+            uploadStatus.innerHTML = '<div class="alert alert-info"><div class="spinner-border spinner-border-sm"></div> 正在上传中...</div>';
+
+            fetch("{{ url_for('upload_to_repository') }}", {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    uploadStatus.innerHTML = `<div class="alert alert-danger">上传失败: ${data.error}</div>`;
+                } else {
+                    uploadStatus.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+                    repoFileInput.value = ''; // Clear the input
+                }
+            })
+            .catch(error => {
+                uploadStatus.innerHTML = `<div class="alert alert-danger">上传过程中发生网络错误: ${error}</div>`;
+            });
+        });
+    });
+</script>
+{% endblock %}

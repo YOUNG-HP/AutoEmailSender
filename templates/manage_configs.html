@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>管理发件人配置</h3>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#configModal">
+        <i class="bi bi-plus-circle"></i> 添加新配置
+    </button>
+</div>
+
+<div class="list-group">
+    {% for config in configs %}
+    <div class="list-group-item">
+        <div class="d-flex w-100 justify-content-between">
+            <h5 class="mb-1">{{ config.name }}</h5>
+            <div>
+                <button type="button" class="btn btn-sm btn-outline-primary edit-btn" 
+                        data-bs-toggle="modal" data-bs-target="#configModal"
+                        data-id="{{ config.id }}" 
+                        data-name="{{ config.name }}" 
+                        data-server="{{ config.smtp_server }}" 
+                        data-port="{{ config.smtp_port }}" 
+                        data-username="{{ config.email_username }}"
+                        data-assigned-users="{{ config.assigned_users|map(attribute='id')|join(',') }}">
+                    <i class="bi bi-pencil"></i> 编辑
+                </button>
+                <a href="{{ url_for('delete_config', config_id=config.id) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('确定要删除这个配置吗？');">
+                    <i class="bi bi-trash"></i> 删除
+                </a>
+            </div>
+        </div>
+        <p class="mb-1">{{ config.email_username }}</p>
+        <small class="text-muted">已分配给: {{ config.assigned_users|map(attribute='username')|join(', ') or '无' }}</small>
+    </div>
+    {% else %}
+    <p>您还没有任何发件人配置。</p>
+    {% endfor %}
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="configModal" tabindex="-1" aria-labelledby="configModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="configForm" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="configModalLabel">添加/编辑配置</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="config_id" name="config_id">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">配置名称</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="smtp_server" class="form-label">SMTP 服务器</label>
+                        <input type="text" class="form-control" id="smtp_server" name="smtp_server" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="smtp_port" class="form-label">端口</label>
+                        <input type="number" class="form-control" id="smtp_port" name="smtp_port" value="465" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email_username" class="form-label">邮箱地址</label>
+                        <input type="email" class="form-control" id="email_username" name="email_username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email_password" class="form-label">邮箱密码 / 授权码</label>
+                        <input type="password" class="form-control" id="email_password" name="email_password">
+                        <div class="form-text">编辑时，如不修改密码请留空。</div>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label">分配给用户</label>
+                        <div id="user-checklist" class="border rounded p-2" style="max-height: 150px; overflow-y: auto;">
+                            {% for user in all_users %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="assigned_users" value="{{ user.id }}" id="user_{{ user.id }}">
+                                <label class="form-check-label" for="user_{{ user.id }}">{{ user.username }}</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const configModal = document.getElementById('configModal');
+        const configForm = document.getElementById('configForm');
+        const modalLabel = document.getElementById('configModalLabel');
+
+        configModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            const isEdit = button.classList.contains('edit-btn');
+            
+            // Reset all checkboxes first
+            document.querySelectorAll('input[name="assigned_users"]').forEach(cb => cb.checked = false);
+
+            if (isEdit) {
+                modalLabel.textContent = '编辑配置';
+                configForm.action = "{{ url_for('edit_config') }}";
+                document.getElementById('config_id').value = button.dataset.id;
+                document.getElementById('name').value = button.dataset.name;
+                document.getElementById('smtp_server').value = button.dataset.server;
+                document.getElementById('smtp_port').value = button.dataset.port;
+                document.getElementById('email_username').value = button.dataset.username;
+                document.getElementById('email_password').required = false;
+
+                const assigned_ids = button.dataset.assignedUsers.split(',');
+                assigned_ids.forEach(id => {
+                    const checkbox = document.getElementById(`user_${id}`);
+                    if(checkbox) checkbox.checked = true;
+                });
+
+            } else {
+                modalLabel.textContent = '添加新配置';
+                configForm.action = "{{ url_for('add_config') }}";
+                configForm.reset();
+                document.getElementById('config_id').value = '';
+                document.getElementById('email_password').required = true;
+            }
+        });
+    });
+</script>
+{% endblock %}

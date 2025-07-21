@@ -1,0 +1,615 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+    <!-- Step Indicator -->
+    <ul class="nav nav-pills nav-fill mb-4" id="steps">
+        <li class="nav-item"><a class="nav-link active" data-step="1">① 选择配置</a></li>
+        <li class="nav-item"><a class="nav-link disabled" data-step="2">② 上传数据</a></li>
+        <li class="nav-item"><a class="nav-link disabled" data-step="3">③ 映射字段</a></li>
+        <li class="nav-item"><a class="nav-link disabled" data-step="4">④ 添加附件</a></li>
+        <li class="nav-item"><a class="nav-link disabled" data-step="5">⑤ 确认发送</a></li>
+    </ul>
+
+    <form id="send-form" action="{{ url_for('send_emails') }}" method="POST" enctype="multipart/form-data">
+        <!-- Step 1: Config Selection -->
+        <div id="step-1" class="step-panel">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">选择发件人</h5>
+                            <select class="form-select" id="config_select" name="config_select" required>
+                                <option selected disabled value="">请选择一个发件人配置...</option>
+                                {% for config in smtp_configs %}
+                                <option value="{{ config.id }}">{{ config.name }} ({{ config.email_username }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">选择邮件模板</h5>
+                            <select class="form-select" id="template_select" name="template_select" required>
+                                <option selected disabled value="">请选择一个模板...</option>
+                                {% for template in email_templates %}
+                                <option value="{{ template.id }}">{{ template.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="template-preview-area" class="mt-4" style="display: none;">
+                <div class="card">
+                    <div class="card-header"><strong>邮件预览</strong></div>
+                    <div class="card-body">
+                        <p><strong>主题:</strong> <span id="preview-subject"></span></p>
+                        <hr>
+                        <div id="preview-body" style="max-height: 300px; overflow-y: auto;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="text-end mt-4">
+                <button type="button" class="btn btn-primary" id="next-to-step-2" disabled>下一步 &rarr;</button>
+            </div>
+        </div>
+
+        <!-- Step 2: Upload Data & Preview -->
+        <div id="step-2" class="step-panel" style="display: none;">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">上传数据文件 (Excel 或 CSV)</h5>
+                    <input class="form-control" type="file" id="data_file" name="data_file" accept=".xlsx, .xls, .csv" required>
+                    <div id="preflight-check-area" class="mt-3" style="display: none;">
+                        <div class="card border-info">
+                            <div class="card-header"><strong>数据预检</strong></div>
+                            <div class="card-body">
+                                <div id="data-preview-section">
+                                    <h6>数据文件预览</h6>
+                                    <div class="table-responsive">
+                                        <table class="table table-bordered table-sm">
+                                            <thead id="preview-header"></thead>
+                                            <tbody id="preview-body-row"></tbody>
+                                        </table>
+                                    </div>
+                                    <p id="send-summary" class="text-primary fw-bold"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex justify-content-between mt-4">
+                <button type="button" class="btn btn-secondary prev-step" data-target="1">&larr; 上一步</button>
+                <button type="button" class="btn btn-primary" id="next-to-step-3" disabled>下一步 &rarr;</button>
+            </div>
+        </div>
+
+        <!-- Step 3: Field Mapping -->
+        <div id="step-3" class="step-panel" style="display: none;">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 id="mapping-summary">字段映射</h5>
+                    <p class="text-muted">请将邮件模板中的占位符与数据文件中的列进行匹配。</p>
+                    <div id="column_mapping_area"></div>
+                </div>
+            </div>
+            <div class="d-flex justify-content-between mt-4">
+                <button type="button" class="btn btn-secondary prev-step" data-target="2">&larr; 上一步</button>
+                <button type="button" class="btn btn-primary next-step" data-target="4">下一步 &rarr;</button>
+            </div>
+        </div>
+
+        <!-- Step 4: Attachments -->
+        <div id="step-4" class="step-panel" style="display: none;">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card shadow-sm mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title">独立附件 (可选)</h5>
+                            <p class="text-muted small">为数据文件中的每一行分别上传一个或多个附件。</p>
+                            <div class="mb-3">
+                                <label for="label-column-select" class="form-label">选择用于标识附件行的列:</label>
+                                <select id="label-column-select" class="form-select form-select-sm"></select>
+                            </div>
+                            <div id="individual-attachments-list" class="list-group" style="max-height: 400px; overflow-y: auto;">
+                                <!-- Dynamic list will be inserted here -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">通用附件 (可选)</h5>
+                            <input class="form-control" type="file" id="attachments" name="attachments" multiple>
+                            <div class="form-text">此处上传的附件将被添加到每一封邮件中。</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                     <div class="card shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">上传文件到附件仓库</h5>
+                            <p class="card-text small">如果需要使用旧的路径模式，可在此上传文件到仓库。</p>
+                            <input class="form-control" type="file" id="repository_files" webkitdirectory directory multiple>
+                            <button type="button" id="upload-repo-button" class="btn btn-success btn-sm mt-2">上传至仓库</button>
+                            <div id="upload-status" class="mt-2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex justify-content-between mt-4">
+                <button type="button" class="btn btn-secondary prev-step" data-target="3">&larr; 上一步</button>
+                <button type="button" class="btn btn-primary next-step" data-target="5">下一步 &rarr;</button>
+            </div>
+        </div>
+
+        <!-- Step 5: Confirmation -->
+        <div id="step-5" class="step-panel" style="display: none;">
+            <div class="card shadow-sm border-success">
+                <div class="card-header bg-success text-white"><h5>最终确认</h5></div>
+                <div class="card-body">
+                    <p>请在发送前最后一次检查您的设置。</p>
+                    <ul class="list-group">
+                        <li class="list-group-item"><strong>发件人:</strong> <span id="confirm-config"></span></li>
+                        <li class="list-group-item"><strong>收件人:</strong> <span id="confirm-recipient"></span></li>
+                        <li class="list-group-item"><strong>模板:</strong> <span id="confirm-template"></span></li>
+                        <li class="list-group-item"><strong>数据文件:</strong> <span id="confirm-data-file"></span></li>
+                        <li class="list-group-item"><strong>发送总数:</strong> <span id="confirm-total-rows"></span></li>
+                        <li class="list-group-item"><strong>通用附件:</strong> <span id="confirm-common-attachments"></span></li>
+                    </ul>
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <label for="send-delay" class="form-label">每封邮件发送延迟（秒）</label>
+                            <input type="number" class="form-control" id="send-delay" name="send_delay" value="1" min="0" step="0.5">
+                            <div class="form-text">建议设置1-5秒的延迟以避免被识别为垃圾邮件。</div>
+                        </div>
+                    </div>
+                    <div class="alert alert-warning mt-3" role="alert">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        点击发送后，任务将立即开始，此操作不可逆。
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex justify-content-between mt-4">
+                <button type="button" class="btn btn-secondary prev-step" data-target="4">&larr; 上一步</button>
+                <button id="send-button" type="submit" class="btn btn-lg btn-success">确认并发送 <i class="bi bi-send-fill"></i></button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Error Modal -->
+<div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="errorModalLabel">发送出错</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="errorModalBody">
+        <!-- Error message will be inserted here -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Progress Modal -->
+<div class="modal fade" id="progressModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="progressModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="progressModalLabel">正在发送邮件...</h5>
+      </div>
+      <div class="modal-body">
+        <div class="progress">
+          <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+        </div>
+        <div id="progressStatus" class="mt-2 text-center">正在初始化...</div>
+        <div id="finalStatus" class="mt-3"></div>
+      </div>
+      <div class="modal-footer" style="display: none;">
+        <button type="button" class="btn btn-primary" onclick="window.location.reload();">完成</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // Show error modal if a danger flash message exists
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                {% if category == 'danger' %}
+                    const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+                    document.getElementById('errorModalBody').textContent = "{{ message|safe }}";
+                    errorModal.show();
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    const steps = document.querySelectorAll('#steps .nav-link');
+    const stepPanels = document.querySelectorAll('.step-panel');
+    const nextButtons = document.querySelectorAll('.next-step');
+    const prevButtons = document.querySelectorAll('.prev-step');
+
+    const configSelect = document.getElementById('config_select');
+    const templateSelect = document.getElementById('template_select');
+    const dataFileInput = document.getElementById('data_file');
+
+    const nextToStep2 = document.getElementById('next-to-step-2');
+    const nextToStep3 = document.getElementById('next-to-step-3');
+
+    function goToStep(stepNumber) {
+        steps.forEach(link => {
+            link.classList.remove('active');
+            link.classList.add('disabled');
+        });
+        stepPanels.forEach(panel => panel.style.display = 'none');
+
+        for (let i = 0; i < stepNumber; i++) {
+            steps[i].classList.remove('disabled');
+            if (i + 1 === stepNumber) {
+                steps[i].classList.add('active');
+            }
+        }
+        document.getElementById(`step-${stepNumber}`).style.display = 'block';
+    }
+
+    function showErrorModal(message) {
+        const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+        document.getElementById('errorModalBody').textContent = message;
+        errorModal.show();
+    }
+
+    function checkStep1() {
+        nextToStep2.disabled = !(configSelect.value && templateSelect.value);
+    }
+
+    nextButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const targetStep = parseInt(button.dataset.target);
+            if (targetStep === 5) {
+                populateConfirmationStep();
+            }
+            goToStep(targetStep);
+        });
+    });
+    prevButtons.forEach(button => {
+        button.addEventListener('click', () => goToStep(parseInt(button.dataset.target)));
+    });
+    nextToStep2.addEventListener('click', () => goToStep(2));
+    nextToStep3.addEventListener('click', () => goToStep(3));
+
+    // --- Step 1 Logic ---
+    configSelect.addEventListener('change', checkStep1);
+    templateSelect.addEventListener('change', function() {
+        checkStep1();
+        fetchAndDisplayPreview();
+    });
+
+    // --- Step 2 Logic ---
+    dataFileInput.addEventListener('change', function() {
+        updateMappingUI();
+        nextToStep3.disabled = !this.files[0];
+    });
+
+    // --- Step 5 Logic (Confirmation) ---
+    let firstRowData = {}; // Variable to store the first row data
+    function populateConfirmationStep() {
+        document.getElementById('confirm-config').textContent = configSelect.options[configSelect.selectedIndex].text;
+        document.getElementById('confirm-template').textContent = templateSelect.options[templateSelect.selectedIndex].text;
+        document.getElementById('confirm-data-file').textContent = dataFileInput.files[0] ? dataFileInput.files[0].name : 'N/A';
+        
+        const recipientColumnSelect = document.querySelector('[name="map_recipient_to"]');
+        const recipientColumn = recipientColumnSelect ? recipientColumnSelect.value : '';
+        const recipientEmail = firstRowData[recipientColumn] || 'N/A (请检查字段映射)';
+        document.getElementById('confirm-recipient').textContent = recipientEmail;
+
+        const sendSummaryEl = document.getElementById('send-summary');
+        document.getElementById('confirm-total-rows').textContent = sendSummaryEl ? (sendSummaryEl.textContent.split('：')[1] || 'N/A') : 'N/A';
+        const commonAttachments = document.getElementById('attachments').files;
+        let attachmentNames = Array.from(commonAttachments).map(f => f.name).join(', ') || '无';
+        document.getElementById('confirm-common-attachments').textContent = attachmentNames;
+    };
+
+    // --- AJAX Functions (reused and adapted) ---
+    const previewArea = document.getElementById('template-preview-area');
+    const previewSubject = document.getElementById('preview-subject');
+    const previewBody = document.getElementById('preview-body');
+    const preflightCheckArea = document.getElementById('preflight-check-area');
+    const mappingArea = document.getElementById('column_mapping_area');
+    const individualAttachmentsList = document.getElementById('individual-attachments-list');
+    const labelColumnSelect = document.getElementById('label-column-select');
+
+    let allColumns = []; // Store columns to be used in step 4
+
+    function fetchAndDisplayPreview() {
+        const templateId = templateSelect.value;
+        if (!templateId) {
+            previewArea.style.display = 'none';
+            return;
+        }
+        fetch(`/preview_template/${templateId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    previewSubject.innerHTML = `<span class="text-danger">${data.error}</span>`;
+                    previewBody.innerHTML = '';
+                } else {
+                    previewSubject.innerHTML = data.subject;
+                    previewBody.innerHTML = data.body;
+                }
+                previewArea.style.display = 'block';
+            });
+    }
+
+    function updateMappingUI() {
+        const templateId = templateSelect.value;
+        const dataFile = dataFileInput.files[0];
+        if (!templateId || !dataFile) {
+            preflightCheckArea.style.display = 'none';
+            return;
+        }
+        const formData = new FormData();
+        formData.append('template_id', templateId);
+        formData.append('data_file', dataFile);
+        preflightCheckArea.style.display = 'block';
+        mappingArea.innerHTML = '<p class="text-muted">正在解析文件并进行智能匹配...</p>';
+        fetch("{{ url_for('get_columns_and_placeholders') }}", { method: 'POST', body: formData })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    mappingArea.innerHTML = `<p class="text-danger">Error: ${data.error}</p>`;
+                    return;
+                }
+                firstRowData = data.first_row; // Store first row data
+                const previewHeader = document.getElementById('preview-header');
+                const previewBodyRow = document.getElementById('preview-body-row');
+                previewHeader.innerHTML = '';
+                previewBodyRow.innerHTML = '';
+                let headerHtml = '<tr>';
+                let bodyRowHtml = '<tr>';
+                data.columns.forEach(col => {
+                    headerHtml += `<th>${col}</th>`;
+                    bodyRowHtml += `<td>${data.first_row[col] || ''}</td>`;
+                });
+                headerHtml += '</tr>';
+                bodyRowHtml += '</tr>';
+                previewHeader.innerHTML = headerHtml;
+                previewBodyRow.innerHTML = bodyRowHtml;
+                document.getElementById('send-summary').textContent = `文件总行数：${data.total_rows}。本次将发送 ${data.total_rows} 封邮件。`;
+                document.getElementById('data-preview-section').style.display = 'block';
+
+                allColumns = data.columns; // Save columns for later use
+                updateLabelColumnSelector();
+                generateIndividualAttachmentsList(data.total_rows); // Initial generation with row numbers
+
+                let html = '<div class="row">';
+                let unmatched_count = 0;
+                html += '<p><strong>邮件关键字段（收件人等）:</strong></p>';
+                const special_fields = [
+                    {name: 'recipient_to', label: '收件人', required: true},
+                    {name: 'recipient_cc', label: '抄送人', required: false},
+                    {name: 'recipient_bcc', label: '密送人', required: false}
+                ];
+                special_fields.forEach(field => {
+                    const suggested_col = data.suggested_mappings[field.name];
+                    const row_class = !suggested_col && field.required ? 'bg-warning-subtle' : '';
+                    html += `<div class="col-md-6 mb-2 rounded p-2 ${row_class}">`;
+                    html += `<div class="input-group"><span class="input-group-text">${field.label}</span><select class="form-select" name="map_${field.name}" ${field.required ? 'required' : ''}>`;
+                    html += '<option value="" selected disabled>选择对应的数据列...</option>';
+                    data.columns.forEach(column => {
+                        const selected = (column === suggested_col) ? 'selected' : '';
+                        html += `<option value="${column}" ${selected}>${column}</option>`;
+                    });
+                    html += '</select></div></div>';
+                    if (!suggested_col && field.required) unmatched_count++;
+                });
+
+                if (data.placeholders.length > 0) {
+                    html += '<hr><p><strong>邮件内容字段 (主题和正文):</strong></p>';
+                    data.placeholders.forEach(placeholder => {
+                        const suggested_col = data.suggested_mappings[placeholder];
+                        const row_class = !suggested_col ? 'bg-warning-subtle' : '';
+                        html += `<div class="col-md-6 mb-2 rounded p-2 ${row_class}">`;
+                        html += `<div class="input-group"><span class="input-group-text">${placeholder}</span><select class="form-select" name="map_${placeholder}" required>`;
+                        html += '<option value="" selected disabled>选择对应的数据列...</option>';
+                        data.columns.forEach(column => {
+                            const selected = (column === suggested_col) ? 'selected' : '';
+                            html += `<option value="${column}" ${selected}>${column}</option>`;
+                        });
+                        html += '</select></div></div>';
+                        if (!suggested_col) unmatched_count++;
+                    });
+                }
+                html += '</div>';
+                mappingArea.innerHTML = html;
+
+                // Generate individual attachment uploaders
+                let attachment_html = '';
+                for (let i = 0; i < data.total_rows; i++) {
+                    attachment_html += `
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            邮件 #${i + 1}
+                            <input type="file" class="form-control form-control-sm" style="width: 70%;" name="individual_attachment_${i}">
+                        </div>`;
+                }
+                individualAttachmentsList.innerHTML = attachment_html;
+
+                const matched_count = Object.keys(data.suggested_mappings).length;
+                let summary_text = `系统已为您自动匹配 ${matched_count} 个字段。`;
+                if (unmatched_count > 0) {
+                    summary_text += ` <span class="text-danger fw-bold">请检查并手动选择 ${unmatched_count} 个未匹配的必填字段。</span>`;
+                } else {
+                    summary_text += ` 所有字段均已匹配。`;
+                }
+                document.getElementById('mapping-summary').innerHTML = summary_text;
+            });
+    }
+
+    function updateLabelColumnSelector() {
+        labelColumnSelect.innerHTML = '<option value="" selected>使用默认行号</option>';
+        allColumns.forEach(col => {
+            labelColumnSelect.innerHTML += `<option value="${col}">${col}</option>`;
+        });
+    }
+
+    function generateIndividualAttachmentsList(totalRows, labels = []) {
+        let attachment_html = '';
+        for (let i = 0; i < totalRows; i++) {
+            const label = labels[i] ? `${labels[i]} (邮件 #${i + 1})` : `邮件 #${i + 1}`;
+            attachment_html += `
+                <div class="list-group-item">
+                    <label class="form-label small">${label}</label>
+                    <input type="file" class="form-control form-control-sm" name="individual_attachment_${i}" multiple>
+                </div>`;
+        }
+        individualAttachmentsList.innerHTML = attachment_html;
+    }
+
+    labelColumnSelect.addEventListener('change', function() {
+        const selectedColumn = this.value;
+        const totalRows = parseInt(document.getElementById('send-summary').textContent.split('：')[1]) || 0;
+        if (!selectedColumn) {
+            generateIndividualAttachmentsList(totalRows);
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('data_file', dataFileInput.files[0]);
+        formData.append('column_name', selectedColumn);
+
+        fetch("{{ url_for('get_column_data') }}", { method: 'POST', body: formData })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showErrorModal('无法加载标签列: ' + data.error);
+                    generateIndividualAttachmentsList(totalRows); // Revert to default
+                } else {
+                    generateIndividualAttachmentsList(totalRows, data.labels);
+                }
+            }).catch(error => {
+                showErrorModal('请求标签列失败: ' + error);
+                generateIndividualAttachmentsList(totalRows);
+            });
+    });
+
+    const sendButton = document.getElementById('send-button');
+
+    sendButton.addEventListener('click', function(event) {
+        event.preventDefault(); // Prevent form submission
+        const form = document.getElementById('send-form');
+        const formData = new FormData(form);
+
+        const progressModal = new bootstrap.Modal(document.getElementById('progressModal'));
+        const progressBar = document.getElementById('progressBar');
+        const progressStatus = document.getElementById('progressStatus');
+        const finalStatus = document.getElementById('finalStatus');
+        const modalFooter = document.querySelector('#progressModal .modal-footer');
+
+        // Reset modal state
+        progressBar.style.width = '0%';
+        progressBar.textContent = '0%';
+        progressBar.classList.remove('bg-success', 'bg-danger');
+        progressStatus.textContent = '正在启动发送任务...';
+        finalStatus.innerHTML = '';
+        modalFooter.style.display = 'none';
+
+        progressModal.show();
+
+        fetch("{{ url_for('send_emails') }}", { method: 'POST', body: formData })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'error') {
+                    progressModal.hide();
+                    showErrorModal(data.message);
+                    return;
+                }
+
+                progressStatus.textContent = '任务已启动，正在连接到状态更新...';
+                const eventSource = new EventSource("{{ url_for('sending_status') }}");
+
+                eventSource.onmessage = function(event) {
+                    const statusData = JSON.parse(event.data);
+                    
+                    if (statusData.status === 'sending') {
+                        const percent = statusData.total > 0 ? Math.round((statusData.progress / statusData.total) * 100) : 0;
+                        progressBar.style.width = percent + '%';
+                        progressBar.textContent = percent + '%';
+                        progressStatus.textContent = `正在发送: ${statusData.progress} / ${statusData.total}`;
+                    } else if (statusData.status === 'complete' || statusData.status.startsWith('error')) {
+                        eventSource.close();
+                        const total = statusData.total || 0;
+                        const sent = statusData.progress || 0;
+                        const failed = total - sent;
+
+                        if (statusData.status === 'complete') {
+                            progressBar.style.width = '100%';
+                            progressBar.textContent = '100%';
+                            progressBar.classList.add('bg-success');
+                            progressStatus.textContent = '发送任务完成！';
+                            let finalMessage = `<div class="alert alert-success">任务完成！成功: ${sent}/${total}，失败: ${failed}/${total}。<br>详细日志已保存至: <code>${statusData.log_path}</code></div>`;
+                            if (failed > 0) {
+                                finalMessage += `<div class="alert alert-warning">失败条目已保存至: <code>${statusData.failure_path}</code></div>`;
+                            }
+                            finalStatus.innerHTML = finalMessage;
+                        } else {
+                            progressBar.classList.add('bg-danger');
+                            progressStatus.textContent = '任务因错误而终止。';
+                            finalStatus.innerHTML = `<div class="alert alert-danger">${statusData.status}</div>`;
+                        }
+                        modalFooter.style.display = 'block';
+                    }
+                };
+
+                eventSource.onerror = function() {
+                    showErrorModal('与服务器的状态连接丢失，请刷新页面查看日志确认最终状态。');
+                    eventSource.close();
+                    progressModal.hide();
+                };
+            })
+            .catch(error => {
+                progressModal.hide();
+                showErrorModal('启动发送任务失败: ' + error);
+            });
+    });
+
+    // --- Repository Upload Logic ---
+    const repoFileInput = document.getElementById('repository_files');
+    const uploadRepoButton = document.getElementById('upload-repo-button');
+    const uploadStatus = document.getElementById('upload-status');
+    uploadRepoButton.addEventListener('click', function() {
+        const files = repoFileInput.files;
+        if (files.length === 0) {
+            uploadStatus.innerHTML = '<div class="alert alert-warning">请先选择要上传的文件或文件夹。</div>';
+            return;
+        }
+        const formData = new FormData();
+        for (const file of files) {
+            formData.append('repository_files', file, file.webkitRelativePath || file.name);
+        }
+        uploadStatus.innerHTML = '<div class="alert alert-info"><div class="spinner-border spinner-border-sm"></div> 正在上传中...</div>';
+        fetch("{{ url_for('upload_to_repository') }}", { method: 'POST', body: formData })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    uploadStatus.innerHTML = `<div class="alert alert-danger">上传失败: ${data.error}</div>`;
+                } else {
+                    uploadStatus.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+                    repoFileInput.value = '';
+                }
+            });
+    });
+});
+</script>
+{% endblock %}

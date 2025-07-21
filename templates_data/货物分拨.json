@@ -1,0 +1,4 @@
+{
+    "subject": "【监管仓转仓|Bonded Warehouse Transfer】{{货物分拨提单信息}}",
+    "body": "<html><body><p style='font-size:14pt;'>DEAR，</p><p style='font-size:14pt;'><strong>此提单需要做转关到监管仓再清关！！！</strong></p><p style='font-size:12pt;'>The shipment under this B/L requires transfer to the bonded warehouse before customs clearance.</p><p style='font-size:14pt;'>提单号(B/L No.)：<span style='font-size:14pt;'>{{货物分拨提单信息}}</span></p><p style='font-size:14pt;'>货物明细(Cargo Details)：<span style='font-size:14pt;'>{{货物明细}}</span></p><p style='font-size:14pt; color: red;'></br><span style='font-size:14pt;'>{{货物分拨备注}}</span></p></body></html>"
+}

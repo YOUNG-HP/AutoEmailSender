@@ -1,0 +1,7 @@
+Flask
+pandas
+python-dotenv
+openpyxl
+Flask-SQLAlchemy
+Flask-Login
+cryptography

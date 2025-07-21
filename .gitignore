@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+venv/
+
+# Instance folder (contains secrets and db)
+instance/
+
+# Environment variables
+.env
+
+# Uploads and Logs
+uploads/
+logs/
+
+# IDE / Editor specific
+.vscode/
+.idea/
